@@ -5,7 +5,7 @@ In this work, we improve the previous state-of-the-art method named ScanRefer: 3
 attention mechanism. ScanRefer is a neural network architecture that localizes objects in 3D point clouds givennatural language descriptions referring to the underlying objects. We improve the object detection module of ScanRefer by substituting VoteNet with Back-tracing Representative Points Network (BRNet). We also propose a method of scene-language understanding and objects relationship understanding by adapting graph neural network, language self-attention, and cross-modal attention mechanism.
 
 ## Setup
-Please check the ScanRefer project website [here](https://daveredrum.github.io/ScanRefer/) for setup.
+Please check the ScanRefer project website [here](https://github.com/daveredrum/ScanRefer) for setup.
 
 ## Usage
 ### Training
