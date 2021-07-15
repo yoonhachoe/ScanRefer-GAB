@@ -18,8 +18,8 @@ sys.path.append(os.path.join(os.getcwd())) # HACK add the root folder
 from lib.config import CONF
 from lib.dataset import ScannetReferenceDataset
 from lib.solver import Solver
-from lib.ap_helper import APCalculator, parse_predictions, parse_groundtruths
-from lib.loss_helper import get_loss
+from lib.ap_helper import APCalculator, parse_predictions, parse_groundtruths, parse_predictions_brnet
+from lib.loss_helper import get_loss, loss_brnet
 from lib.eval_helper import get_eval
 from models.refnet import RefNet
 from utils.box_util import get_3d_box
@@ -55,7 +55,11 @@ def get_model(args, config):
         num_proposal=args.num_proposals,
         input_feature_dim=input_channels,
         use_lang_classifier=(not args.no_lang_cls),
-        use_bidir=args.use_bidir
+        use_bidir=args.use_bidir,
+        use_brnet=args.use_brnet,
+        use_self_attn=args.use_self_attn,
+        use_cross_attn=args.use_cross_attn,
+        use_dgcnn=args.use_dgcnn,
     ).cuda()
 
     model_name = "model.pth"
@@ -113,17 +117,29 @@ def predict(args):
 
         # feed
         data_dict = model(data_dict)
-        _, data_dict = get_loss(
-            data_dict=data_dict, 
-            config=DC, 
-            detection=False,
-            reference=True
-        )
+
+        if not args.use_brnet:
+            _, data_dict = get_loss(
+                data_dict=data_dict, 
+                config=DC, 
+                detection=False,
+                reference=True
+            )
+        else:
+            _, data_dict = loss_brnet(
+                data_dict=data_dict, 
+                config=DC, 
+                detection=False,
+                reference=True
+            )
 
         objectness_preds_batch = torch.argmax(data_dict['objectness_scores'], 2).long()
 
         if POST_DICT:
-            _ = parse_predictions(data_dict, POST_DICT)
+            if not args.use_brnet:
+                _ = parse_predictions(data_dict, POST_DICT)
+            else:
+                _ = parse_predictions_brnet(data_dict, POST_DICT)
             nms_masks = torch.LongTensor(data_dict['pred_mask']).cuda()
 
             # construct valid mask
@@ -132,27 +148,35 @@ def predict(args):
             # construct valid mask
             pred_masks = (objectness_preds_batch == 1).float()
 
+        if not args.use_brnet:
+            pred_center = data_dict['center'] # (B,K,3)  
+            pred_size_class = torch.argmax(data_dict['size_scores'], -1) # B,num_proposal
+            pred_size_residual = torch.gather(data_dict['size_residuals'], 2, pred_size_class.unsqueeze(-1).unsqueeze(-1).repeat(1,1,1,3)) # B,num_proposal,1,3
+            pred_size_class = pred_size_class
+            pred_size_residual = pred_size_residual.squeeze(2) # B,num_proposal,3
+
         pred_ref = torch.argmax(data_dict['cluster_ref'] * pred_masks, 1) # (B,)
-        pred_center = data_dict['center'] # (B,K,3)
         pred_heading_class = torch.argmax(data_dict['heading_scores'], -1) # B,num_proposal
         pred_heading_residual = torch.gather(data_dict['heading_residuals'], 2, pred_heading_class.unsqueeze(-1)) # B,num_proposal,1
         pred_heading_class = pred_heading_class # B,num_proposal
         pred_heading_residual = pred_heading_residual.squeeze(2) # B,num_proposal
-        pred_size_class = torch.argmax(data_dict['size_scores'], -1) # B,num_proposal
-        pred_size_residual = torch.gather(data_dict['size_residuals'], 2, pred_size_class.unsqueeze(-1).unsqueeze(-1).repeat(1,1,1,3)) # B,num_proposal,1,3
-        pred_size_class = pred_size_class
-        pred_size_residual = pred_size_residual.squeeze(2) # B,num_proposal,3
 
         for i in range(pred_ref.shape[0]):
             # compute the iou
             pred_ref_idx = pred_ref[i]
-            pred_obb = DC.param2obb(
-                pred_center[i, pred_ref_idx, 0:3].detach().cpu().numpy(), 
-                pred_heading_class[i, pred_ref_idx].detach().cpu().numpy(), 
-                pred_heading_residual[i, pred_ref_idx].detach().cpu().numpy(),
-                pred_size_class[i, pred_ref_idx].detach().cpu().numpy(), 
-                pred_size_residual[i, pred_ref_idx].detach().cpu().numpy()
-            )
+
+            if not args.use_brnet:
+                pred_obb = DC.param2obb(
+                    pred_center[i, pred_ref_idx, 0:3].detach().cpu().numpy(), 
+                    pred_heading_class[i, pred_ref_idx].detach().cpu().numpy(), 
+                    pred_heading_residual[i, pred_ref_idx].detach().cpu().numpy(),
+                    pred_size_class[i, pred_ref_idx].detach().cpu().numpy(), 
+                    pred_size_residual[i, pred_ref_idx].detach().cpu().numpy()
+                )
+            else:
+                pred_obb = DC.dist2obb(data_dict['refined_distance'][i, pred_ref_idx, 0:6],
+                                       data_dict['aggregated_vote_xyz'][i, pred_ref_idx, 0:3])
+
             pred_bbox = get_3d_box(pred_obb[3:6], pred_obb[6], pred_obb[0:3])
 
             # construct the multiple mask
@@ -196,6 +220,11 @@ if __name__ == "__main__":
     parser.add_argument("--use_normal", action="store_true", help="Use RGB color in input.")
     parser.add_argument("--use_multiview", action="store_true", help="Use multiview images.")
     parser.add_argument("--use_bidir", action="store_true", help="Use bi-directional GRU.")
+    parser.add_argument("--use_brnet", action="store_true", help="Use BRNet for object detection.")
+    parser.add_argument("--use_self_attn", action="store_true", help="Use self attention for lang features.")
+    parser.add_argument("--use_cross_attn", action="store_true", help="Use cross attention with visual and lang features.")
+    parser.add_argument("--use_dgcnn", action="store_true", help="Use DGCNN for visual features.")
+    parser.add_argument("--fuse_before", action="store_true", help="Fuse before DGCNN.")
     args = parser.parse_args()
 
     # setting
@@ -209,3 +238,4 @@ if __name__ == "__main__":
     np.random.seed(args.seed)
 
     predict(args)
+
