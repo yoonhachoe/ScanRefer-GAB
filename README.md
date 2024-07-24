@@ -34,6 +34,7 @@ python scripts/visualize_selfattention.py --folder <folder_name> --scene_id <sce
 ```
 
 <p align="center"><img src="docs/image1.jpg" width="100%"/></p>
+<p align="center"><img src="docs/image2.jpg" width="100%"/></p>
 
 ## Acknowledgement
 We would like to thank Dave Zhenyu Chen for the ScanRefer codebase.
