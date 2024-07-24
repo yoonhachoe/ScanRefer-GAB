@@ -1,5 +1,7 @@
 # ScanRefer: 3D Object Localization in RGB-D Scans using Natural Language with Graph, Attention and BRNet
 
+<p align="center"><img src="docs/image0.jpg" width="100%"/></p>
+
 ## Introduction
 In this work, we improve the previous state-of-the-art method named ScanRefer: 3D Object Localization in RGB-D Scans using Natural Language by adapting graph and
 attention mechanism. ScanRefer is a neural network architecture that localizes objects in 3D point clouds given natural language descriptions referring to the underlying objects. We improve the object detection module of ScanRefer by substituting VoteNet with Back-tracing Representative Points Network (BRNet). We also propose a method of scene-language understanding and objects relationship understanding by adapting graph neural network, language self-attention, and cross-modal attention mechanism.
