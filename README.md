@@ -33,5 +33,7 @@ To visualize the attention weights run:
 python scripts/visualize_selfattention.py --folder <folder_name> --scene_id <scene_id> --use_color --use_brnet --use_self_attn --use_dgcnn --use_cross_attn
 ```
 
+<p align="center"><img src="docs/image1.jpg" width="100%"/></p>
+
 ## Acknowledgement
 We would like to thank Dave Zhenyu Chen for the ScanRefer codebase.
